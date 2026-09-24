@@ -5,7 +5,7 @@ Link to challenges: <https://cryptopals.com/>
 [WIP] Links to write-ups:
 
 1. [Set 1: Basics](https://app.notion.com/p/Set-1-327b26731c3780c4b9c1ead057f3206a?source=copy_link)
-2. Set 2: Block crypto
+2. [Set 2: Block crypto](https://app.notion.com/p/Set-2-3d0b26731c3780769ef4e68fa702136a?source=copy_link)
 3. Set 3: Block & stream crypto
 4. Set 4: Stream crypto and randomness
 5. Set 5: Diffie-Hellman and friends
