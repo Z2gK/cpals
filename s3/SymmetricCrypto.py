@@ -252,6 +252,45 @@ class SymmetricCrypto:
 
         return x.to_bytes()
 
+
+class RndAccessCTR:
+    # class to store random access AES CTR mode encrypted ciphertexts
+    # for Set 4 Challenge 25
+    # key and nonce are both 16 bytes
+    def __init__(self, pt: bytes, key: bytes, nonce: bytes):
+        self.key = key
+        self.nonce = nonce
+        self.ct = SymmetricCrypto.AESCTRencrypt(pt, key, nonce)
+
+    def printct(self):
+        print(self.ct)
+
+    def printcthex(self):
+        print(self.ct.hex())
+
+    def getct(self):
+        return self.ct
+
+    def edit(self, offset: int, newtext: bytes):
+        # offset is the position where bytes starts to be replaced
+        # first byte offset=0
+        if offset >= len(self.ct) or offset < 0:
+            print("Invalid offset!")
+            raise ValueError
+
+        if offset + len(newtext) > len(self.ct):
+            print("New text is too long")
+            raise ValueError
+
+        if len(newtext) == 0:
+            return
+
+        pt = SymmetricCrypto.AESCTRdecrypt(self.ct, self.key, self.nonce)
+        pt = pt[:offset] + newtext + pt[offset+len(newtext):]
+        self.ct = SymmetricCrypto.AESCTRencrypt(pt, self.key, self.nonce)
+        
+        
+    
 class CiphertextsCTR:
     # class to store AES CTR mode encrypted ciphertexts
     # for Set 3 Challenge 19
@@ -495,3 +534,252 @@ class MT19937:
     def printstate(self):
         # print the entire internal state
         print(self.state)
+
+class MACSHA1:
+    # Implements SHA1 MAC in pure python
+    # Adapted from the implementation here:
+    # https://gist.github.com/kangtastic/af9fe725c2358463035a0637b9fee5c4
+    # The instance does not maintain state
+    def __init__(self, key: bytes):
+        self.key = key
+        self.stateloaded = False
+        # self.h = [0x67452301, 0xEFCDAB89, 0x98BADCFE, 0x10325476, 0xC3D2E1F0]
+
+    def digest(self, msg) -> bytes:
+        # prepends MAC key, hash and return hash as byte string
+        # we expect msg to be bytes, but can take str too
+        if (type(msg) != str) and (type(msg) != bytes):
+            print("Message should be a text or byte string!")
+            raise TypeError
+        if type(msg) == str:
+            msg = msg.encode()
+        h = self.process(self.key + msg)
+        return b''.join([x.to_bytes(4, byteorder='big') for x in h])
+        # return hashlib.sha1(self.key + msg).digest()
+
+    def hexdigest(self, msg) -> str:
+        # prepends MAC key, hash and return hash as hex encoded string
+        # we expect msg to be bytes, but can take str too
+        if (type(msg) != str) and (type(msg) != bytes):
+            print("Message should be a text or byte string!")
+            raise TypeError
+        if type(msg) == str:
+            msg = msg.encode()
+        h = self.process(self.key + msg)
+        return b''.join([x.to_bytes(4, byteorder='big') for x in h]).hex()
+        # return hashlib.sha1(self.key + msg).hexdigest()
+
+    def loadstate(self, h: list[int], start: int):
+        # enable loading of state to facilitate length extension computation
+        # h should be a list of 5 32-bit ints
+        # start is the number of bytes already hashed
+        self.h = h
+        self.stateloaded = True
+        self.start = start
+        
+    def process(self, msg):
+        # implements SHA1 without prepending the MAC key
+        # we expect msg to be bytes, but can take str too
+        if (type(msg) != str) and (type(msg) != bytes):
+            print("Message should be a text or byte string!")
+            raise TypeError
+        if type(msg) == str:
+            msg = msg.encode()
+
+        if self.stateloaded:
+            # length extension case
+            h = self.h
+            ml = (len(msg) + self.start) * 8
+            msg += b"\x80"
+            msg += b"\x00" * (-(len(msg) + self.start + 8) % 64) # actually don't need to add self.start since it is 0 mod 64 
+            msg += ml.to_bytes(8, byteorder='big')
+        else:
+            # normal case
+            h = [0x67452301, 0xEFCDAB89, 0x98BADCFE, 0x10325476, 0xC3D2E1F0]
+            ml = len(msg) * 8
+            msg += b"\x80"
+            msg += b"\x00" * (-(len(msg) + 8) % 64)
+            # msg += struct.pack(">Q", ml)
+            msg += ml.to_bytes(8, byteorder='big') # more Pythonic
+
+        chunks = [msg[i : i + 64] for i in range(0, len(msg), 64)]
+        for chunk in chunks:
+            # w = list(struct.unpack(">16L", chunk))
+            w = [int.from_bytes(chunk[i:i+4], "big") for i in range(0,64,4)] # more Pythonic
+
+            # Extend the sixteen 32-bit words into eighty 32-bit words.
+            for i in range(16, 80):
+                value = w[i - 3] ^ w[i - 8] ^ w[i - 14] ^ w[i - 16]
+                w.append(MACSHA1.lrot(value, 1))
+
+            # Initialize hash value for this chunk.
+            a, b, c, d, e = h
+
+            # Main loop.
+            for i in range(len(w)):
+                if i < 20:
+                    f, k = d ^ (b & (c ^ d)), 0x5A827999
+                elif i < 40:
+                    f, k = b ^ c ^ d, 0x6ED9EBA1
+                elif i < 60:
+                    f, k = (b & c) | (d & (b | c)), 0x8F1BBCDC
+                else:
+                    f, k = b ^ c ^ d, 0xCA62C1D6
+
+                temp = (MACSHA1.lrot(a, 5) + f + e + k + w[i]) & 0xFFFFFFFF
+                e, d, c, b, a = d, c, MACSHA1.lrot(b, 30), a, temp
+
+            # Add this chunk's hash to result so far.
+            c_hash = [a, b, c, d, e]
+            h = [((v + n) & 0xFFFFFFFF) for v, n in zip(h, c_hash)]
+        return h
+
+    @staticmethod
+    def lrot(value, n):
+        mask = 0xFFFFFFFF
+        width = 32
+        lbits = (value << n) & mask
+        rbits =  value >> (width - n)
+        return lbits | rbits
+        
+    def auth(self, msg, mac) -> bool:
+        # authenticates message
+        # return True if message authenticates, False otherwise
+        # mac can either be bytes or hex-encoded string
+        if (type(msg) != str) and (type(msg) != bytes):
+            print("Message should be a text or byte string!")
+            raise TypeError
+        if (type(mac) != str) and (type(mac) != bytes):
+            print("MAC should be a text or byte string!")
+            raise TypeError
+        if type(mac) == str and len(bytes.fromhex(mac)) != 20:
+            print("Invalid MAC!")
+            raise TypeError
+        if type(mac) == bytes and len(mac) != 20:
+            print("Invalid MAC!")
+            raise TypeError
+
+        # Convert both msg and mac to byte strings
+        if type(msg) == str:
+            msg = msg.encode()
+        if type(mac) == str:
+            mac = bytes.fromhex(mac)
+
+        return self.digest(msg) == mac
+
+class MACMD4:
+    # Implements MD4 in pure Python
+    # Adapted from the implementation here:
+    # https://github.com/FiloSottile/crypto.py/blob/master/3/md4.py
+    # This implementation does not maintain state
+    def __init__(self, key: bytes):
+        self.key = key
+        self.stateloaded = False
+        
+    def loadstate(self, h: list[int], start: int):
+        # enable loading of state to facilitate length extension computation
+        # h should be a list of 4 32-bit ints
+        # start is the number of bytes already hashed
+        self.h = h
+        self.stateloaded = True
+        self.start = start
+
+    def digest(self, msg: bytes) -> bytes:
+        msg = self.key + msg
+        h = self.process(msg)
+        # print(h)
+        return b''.join([v.to_bytes(4, 'little') for v in h])
+
+    def hexdigest(self, msg: bytes) -> str:
+        msg = self.key + msg
+        h = self.process(msg)
+        return b''.join([x.to_bytes(4, 'little') for x in h]).hex()
+
+    def process(self, msg: bytes):
+        if self.stateloaded:
+            # print("State loaded!")
+            length = ((len(msg) + self.start) * 8).to_bytes(8, byteorder="little", signed=False)
+            msg += b'\x80'
+            msg += bytes((56 - len(msg)) % 64) # no need to add self.start since it will be 0 mod 64 anyway
+            msg += length
+            # print(msg)
+            h = self.h
+        else:
+            # length = struct.pack('<Q', len(msg) * 8)
+            length = (len(msg) * 8).to_bytes(8, byteorder="little", signed=False)
+            msg += b'\x80'
+            msg += bytes((56 - len(msg)) % 64)
+            msg += length
+            # print(msg)
+            h = [0x67452301, 0xefcdab89, 0x98badcfe, 0x10325476]
+
+        while len(msg) != 0:
+            h = self._handle(msg[:64], h)
+            msg = msg[64:]
+        return h
+
+    def _handle(self, chunk: bytes, h):
+        # X = list(struct.unpack('<' + 'I' * 16, chunk))
+        # print("start h =", h)
+        X = [int.from_bytes(chunk[i : i + 4], "little") for i in range(0, 64, 4)]
+        # AA, BB, CC, DD = [0x67452301, 0xefcdab89, 0x98badcfe, 0x10325476]
+        A, B, C, D = h
+        # A, B, C, D = [0x67452301, 0xefcdab89, 0x98badcfe, 0x10325476]
+
+        for i in range(16):
+            k = i
+            if i % 4 == 0:
+                A = MACMD4.lrot((A + MACMD4._F(B, C, D) + X[k]) & 0xffffffff, 3)
+            elif i % 4 == 1:
+                D = MACMD4.lrot((D + MACMD4._F(A, B, C) + X[k]) & 0xffffffff, 7)
+            elif i % 4 == 2:
+                C = MACMD4.lrot((C + MACMD4._F(D, A, B) + X[k]) & 0xffffffff, 11)
+            elif i % 4 == 3:
+                B = MACMD4.lrot((B + MACMD4._F(C, D, A) + X[k]) & 0xffffffff, 19)
+
+        for i in range(16):
+            k = (i // 4) + (i % 4) * 4
+            if i % 4 == 0:
+                A = MACMD4.lrot((A + MACMD4._G(B, C, D) + X[k] + 0x5a827999) & 0xffffffff, 3)
+            elif i % 4 == 1:
+                D = MACMD4.lrot((D + MACMD4._G(A, B, C) + X[k] + 0x5a827999) & 0xffffffff, 5)
+            elif i % 4 == 2:
+                C = MACMD4.lrot((C + MACMD4._G(D, A, B) + X[k] + 0x5a827999) & 0xffffffff, 9)
+            elif i % 4 == 3:
+                B = MACMD4.lrot((B + MACMD4._G(C, D, A) + X[k] + 0x5a827999) & 0xffffffff, 13)
+
+        order = [0, 8, 4, 12, 2, 10, 6, 14, 1, 9, 5, 13, 3, 11, 7, 15]
+        for i in range(16):
+            k = order[i]
+            if i % 4 == 0:
+                A = MACMD4.lrot((A + MACMD4._H(B, C, D) + X[k] + 0x6ed9eba1) & 0xffffffff, 3)
+            elif i % 4 == 1:
+                D = MACMD4.lrot((D + MACMD4._H(A, B, C) + X[k] + 0x6ed9eba1) & 0xffffffff, 9)
+            elif i % 4 == 2:
+                C = MACMD4.lrot((C + MACMD4._H(D, A, B) + X[k] + 0x6ed9eba1) & 0xffffffff, 11)
+            elif i % 4 == 3:
+                B = MACMD4.lrot((B + MACMD4._H(C, D, A) + X[k] + 0x6ed9eba1) & 0xffffffff, 15)
+
+        h[0] = (h[0] + A) & 0xffffffff
+        h[1] = (h[1] + B) & 0xffffffff
+        h[2] = (h[2] + C) & 0xffffffff
+        h[3] = (h[3] + D) & 0xffffffff
+        # print("end h =", h)
+        return h
+
+    @staticmethod
+    def lrot(x, n):
+        return (x << n) | (x >> (32 - n))
+
+    @staticmethod
+    def _F(x,y,z):
+        return ((x & y) | (~x & z))
+
+    @staticmethod
+    def _G(x,y,z):
+        return ((x & y) | (x & z) | (y & z))
+
+    @staticmethod
+    def _H(x,y,z):
+        return (x ^ y ^ z)
+

@@ -7,7 +7,7 @@ Link to challenges: <https://cryptopals.com/>
 1. [Set 1: Basics](https://app.notion.com/p/Set-1-327b26731c3780c4b9c1ead057f3206a?source=copy_link)
 2. [Set 2: Block crypto](https://app.notion.com/p/Set-2-3d0b26731c3780769ef4e68fa702136a?source=copy_link)
 3. [Set 3: Block & stream crypto](https://app.notion.com/p/Set-3-3e5b26731c37807c9a85d3dbe53c27d0?source=copy_link)
-4. Set 4: Stream crypto and randomness
+4. [Set 4: Stream crypto and randomness](https://app.notion.com/p/Set-4-40eb26731c378073bfdcea8813ec3b78?source=copy_link)
 5. Set 5: Diffie-Hellman and friends
 6. Set 6: RSA and DSA
 7. Set 7: Hashes
